@@ -1,0 +1,82 @@
+name: Build Unsigned iOS IPA (Proper)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+    
+    - name: Install dependencies
+      run: npm install
+    
+    - name: Setup Ruby (for CocoaPods)
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.0'
+        bundler-cache: true
+    
+    - name: Prebuild iOS
+      run: npx expo prebuild --clean --platform ios --non-interactive
+    
+    - name: Install CocoaPods
+      run: |
+        cd ios
+        pod install
+    
+    - name: Build unsigned IPA
+      run: |
+        cd ios
+        xcodebuild -workspace BrawlStarsToolLoader.xcworkspace \
+          -scheme BrawlStarsToolLoader \
+          -configuration Release \
+          -derivedDataPath build \
+          -arch arm64 \
+          -sdk iphoneos \
+          -allowProvisioningUpdates \
+          -authenticationKeyPath /dev/null \
+          -authenticationKeyID "" \
+          -authenticationKeyIssuerID "" \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGN_ENTITLEMENTS="" \
+          2>&1 | tail -100
+    
+    - name: Package IPA
+      run: |
+        cd ios/build/Release-iphoneos
+        if [ -d "BrawlStarsToolLoader.app" ]; then
+          mkdir -p Payload
+          cp -r BrawlStarsToolLoader.app Payload/
+          zip -qr ../../BrawlStarsToolLoader-unsigned.ipa Payload/
+          echo "✓ IPA packaged"
+        else
+          echo "❌ App not found"
+          find . -name "*.app" -type d
+        fi
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: unsigned-ipa
+        path: ios/BrawlStarsToolLoader-unsigned.ipa
+        retention-days: 30
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: ios/BrawlStarsToolLoader-unsigned.ipa
+        tag_name: ios-unsigned-${{ github.run_number }}
+        body: "Unsigned iOS IPA - Ready for gbox signing"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
