@@ -1,0 +1,57 @@
+name: Build Unsigned iOS IPA
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+    
+    - name: Install dependencies
+      run: |
+        npm install
+        npm install -g eas-cli expo-cli
+    
+    - name: Prebuild iOS project
+      run: |
+        npx expo prebuild --clean --platform ios --non-interactive
+    
+    - name: Build unsigned IPA
+      run: |
+        cd ios
+        xcodebuild -workspace sheamayo.xcworkspace \
+          -scheme sheamayo \
+          -configuration Release \
+          -derivedDataPath build \
+          -arch arm64 \
+          -sdk iphoneos
+        
+        # Find and copy IPA
+        find build -name "*.app" -type d | head -1 | xargs -I {} sh -c 'cd {} && zip -r ../../sheamayo.ipa .'
+    
+    - name: Upload IPA artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: sheamayo-unsigned-ipa
+        path: sheamayo.ipa
+        retention-days: 30
+    
+    - name: Create Release
+      if: success()
+      uses: softprops/action-gh-release@v2
+      with:
+        files: sheamayo.ipa
+        tag_name: ipa-${{ github.run_number }}
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
