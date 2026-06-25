@@ -18,7 +18,8 @@
     "production": {
       "distribution": "store",
       "ios": {
-        "resourceClass": "default"
+        "resourceClass": "default",
+        "enterpriseProvisioning": "universal"
       }
     },
     "default": {

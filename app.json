@@ -17,7 +17,8 @@
       "supportsTabletSize": false,
       "infoPlist": {
         "UIStatusBarStyle": "UIStatusBarStyleDarkContent",
-        "CFBundleDevelopmentRegion": "en"
+        "CFBundleDevelopmentRegion": "en",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
