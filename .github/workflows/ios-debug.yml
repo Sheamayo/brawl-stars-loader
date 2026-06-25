@@ -1,0 +1,75 @@
+name: Debug iOS Build
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+    
+    - name: Install npm deps
+      run: npm install
+    
+    - name: Prebuild iOS
+      run: npx expo prebuild --clean --platform ios --non-interactive
+    
+    - name: List iOS project
+      run: |
+        echo "=== iOS Directory ==="
+        ls -la ios/
+        echo ""
+        echo "=== Schemes ==="
+        cd ios && xcodebuild -workspace BrawlStarsToolLoader.xcworkspace -list || echo "Workspace build failed"
+    
+    - name: Pod install
+      run: |
+        cd ios
+        pod install --repo-update 2>&1 | tail -50
+    
+    - name: Build app (debug)
+      run: |
+        cd ios
+        xcodebuild -workspace BrawlStarsToolLoader.xcworkspace \
+          -scheme BrawlStarsToolLoader \
+          -configuration Debug \
+          -derivedDataPath build \
+          -arch arm64 \
+          -sdk iphoneos \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          2>&1 | tail -100
+    
+    - name: Find .app bundle
+      run: |
+        find ios/build -name "*.app" -type d
+    
+    - name: Package unsigned IPA
+      run: |
+        APP=$(find ios/build -name "BrawlStarsToolLoader.app" -type d | head -1)
+        if [ -z "$APP" ]; then
+          echo "❌ App bundle not found"
+          exit 1
+        fi
+        
+        echo "✓ Found: $APP"
+        mkdir -p Payload
+        cp -r "$APP" Payload/
+        zip -qr BrawlStarsToolLoader-unsigned.ipa Payload/
+        ls -lh BrawlStarsToolLoader-unsigned.ipa
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ios-unsigned-ipa
+        path: BrawlStarsToolLoader-unsigned.ipa
+        retention-days: 7
