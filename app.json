@@ -7,7 +7,11 @@
     "icon": "./assets/images/icon.png",
     "scheme": "brawlstarstoolloader",
     "userInterfaceStyle": "dark",
-    "ios": {
+    "extra": {
+      "eas": {
+        "projectId": "2c9f4927-8494-41ed-b9b4-1969c23ba72c"
+      }
+    },
       "bundleIdentifier": "com.brawlstars.toolloader",
       "supportsTabletSize": false,
       "infoPlist": {
