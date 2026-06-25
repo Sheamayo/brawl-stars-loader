@@ -16,13 +16,13 @@
       }
     },
     "production": {
-      "distribution": "universal",
+      "distribution": "store",
       "ios": {
         "resourceClass": "default"
       }
     },
     "default": {
-      "distribution": "universal",
+      "distribution": "store",
       "ios": {
         "resourceClass": "default"
       }
