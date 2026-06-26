@@ -1,0 +1,82 @@
+name: iOS Build - Fixed
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+    
+    - name: npm install
+      run: npm install
+    
+    - name: Prebuild iOS
+      run: npx expo prebuild --clean --platform ios --non-interactive
+    
+    - name: Check workspace/schemes
+      run: |
+        echo "=== iOS Directory ==="
+        ls -la ios/ | grep -E "\.xcworkspace|\.xcodeproj"
+        echo ""
+        echo "=== Available Schemes ==="
+        cd ios && xcodebuild -workspace BrawlStarsToolLoader.xcworkspace -list 2>&1 || xcodebuild -list 2>&1
+    
+    - name: Pod install (verbose)
+      run: |
+        cd ios
+        pod install --verbose 2>&1 | tail -100
+    
+    - name: xcodebuild - archive (verbose output)
+      run: |
+        cd ios
+        xcodebuild \
+          -workspace BrawlStarsToolLoader.xcworkspace \
+          -scheme BrawlStarsToolLoader \
+          -configuration Release \
+          -derivedDataPath build \
+          -arch arm64 \
+          -sdk iphoneos \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          clean build 2>&1 | tee /tmp/xcodebuild.log
+    
+    - name: Check build output
+      if: always()
+      run: |
+        echo "=== Build directory structure ==="
+        find ios/build -type d -name "*.app" 2>/dev/null || echo "No .app found"
+        echo ""
+        echo "=== Last 100 lines of xcodebuild log ==="
+        tail -100 /tmp/xcodebuild.log
+    
+    - name: Create IPA
+      if: success()
+      run: |
+        APP=$(find ios/build -name "BrawlStarsToolLoader.app" -type d | head -1)
+        if [ -z "$APP" ]; then
+          echo "❌ BrawlStarsToolLoader.app not found"
+          find ios/build -name "*.app" -type d
+          exit 1
+        fi
+        
+        mkdir -p Payload
+        cp -r "$APP" Payload/
+        zip -qr BrawlStarsToolLoader-unsigned.ipa Payload/
+        ls -lh BrawlStarsToolLoader-unsigned.ipa
+    
+    - name: Upload
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ios-ipa
+        path: BrawlStarsToolLoader-unsigned.ipa
