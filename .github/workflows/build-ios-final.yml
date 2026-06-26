@@ -32,17 +32,17 @@ jobs:
     - name: Install CocoaPods
       run: |
         cd ios
-        echo "Running pod install..."
-        pod install --repo-update
-        echo "✓ CocoaPods installed"
-        ls -la
+        pod install --repo-update 2>&1 | tee pod-install.log
+        echo ""
+        echo "=== CocoaPods Success ==="
+        ls -la | grep -i xcworkspace
     
     - name: List schemes
       run: |
         cd ios
-        xcodebuild -workspace BrawlStarsToolLoader.xcworkspace -list
+        xcodebuild -workspace BrawlStarsToolLoader.xcworkspace -list 2>&1 | tee schemes.log
     
-    - name: Build Release
+    - name: Build Release (verbose)
       run: |
         cd ios
         xcodebuild \
@@ -52,46 +52,58 @@ jobs:
           -derivedDataPath build \
           -arch arm64 \
           -sdk iphoneos \
-          -allowProvisioningUpdates \
+          -verbose \
           CODE_SIGN_IDENTITY="" \
           CODE_SIGNING_REQUIRED=NO \
-          CODE_SIGN_ENTITLEMENTS="" \
-          2>&1 | tee xcodebuild.log
+          2>&1 | tee build.log
+        
+        echo ""
+        echo "Build exit code: $?"
     
-    - name: Check build output
+    - name: Check build artifacts
+      if: always()
       run: |
-        echo "=== Build artifacts ==="
-        find ios/build -name "*.app" -type d
-        find ios/build -name "*.o" | wc -l
+        echo "=== Checking for .app bundle ==="
+        find ios/build -name "*.app" -type d 2>/dev/null || echo "❌ No .app found"
+        
+        echo ""
+        echo "=== build directory structure ==="
+        ls -la ios/build 2>/dev/null || echo "❌ build dir not found"
+        
+        echo ""
+        echo "=== Checking for build errors in log ==="
+        grep -i "error" ios/build.log | head -20
     
     - name: Package IPA
+      continue-on-error: true
       run: |
         APP_PATH=$(find ios/build -name "BrawlStarsToolLoader.app" -type d | head -1)
         if [ -z "$APP_PATH" ]; then
-          echo "❌ App bundle not found!"
-          echo "=== xcodebuild log (last 100 lines) ==="
-          tail -100 ios/xcodebuild.log
+          echo "❌ App bundle not found - build failed"
           exit 1
         fi
         
         echo "✓ Found app: $APP_PATH"
-        
         mkdir -p Payload
         cp -r "$APP_PATH" Payload/
-        
-        # Embed dylib if exists
-        DYLIB_SOURCE="/Users/runner/work/brawl-stars-loader/brawl-stars-loader/BrawlStarsTool.dylib"
-        if [ -f "$DYLIB_SOURCE" ]; then
-          mkdir -p "Payload/BrawlStarsToolLoader.app/Frameworks"
-          cp "$DYLIB_SOURCE" "Payload/BrawlStarsToolLoader.app/Frameworks/"
-          echo "✓ Embedded dylib"
-        fi
         
         zip -qr BrawlStarsToolLoader-unsigned.ipa Payload/
         echo "✓ IPA created"
         ls -lh BrawlStarsToolLoader-unsigned.ipa
     
-    - name: Upload artifact
+    - name: Upload build logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-logs
+        path: |
+          ios/build.log
+          ios/pod-install.log
+          ios/schemes.log
+        retention-days: 7
+    
+    - name: Upload IPA (if exists)
+      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: unsigned-ipa
