@@ -1,0 +1,99 @@
+name: Build iOS IPA (Final)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+    
+    - name: Install dependencies
+      run: npm install
+    
+    - name: Prebuild iOS
+      run: npx expo prebuild --clean --platform ios --non-interactive
+    
+    - name: Setup Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.0'
+        bundler-cache: true
+    
+    - name: Install CocoaPods
+      run: |
+        cd ios
+        echo "Running pod install..."
+        pod install --repo-update
+        echo "✓ CocoaPods installed"
+        ls -la
+    
+    - name: List schemes
+      run: |
+        cd ios
+        xcodebuild -workspace BrawlStarsToolLoader.xcworkspace -list
+    
+    - name: Build Release
+      run: |
+        cd ios
+        xcodebuild \
+          -workspace BrawlStarsToolLoader.xcworkspace \
+          -scheme BrawlStarsToolLoader \
+          -configuration Release \
+          -derivedDataPath build \
+          -arch arm64 \
+          -sdk iphoneos \
+          -allowProvisioningUpdates \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGN_ENTITLEMENTS="" \
+          2>&1 | tee xcodebuild.log
+    
+    - name: Check build output
+      run: |
+        echo "=== Build artifacts ==="
+        find ios/build -name "*.app" -type d
+        find ios/build -name "*.o" | wc -l
+    
+    - name: Package IPA
+      run: |
+        APP_PATH=$(find ios/build -name "BrawlStarsToolLoader.app" -type d | head -1)
+        if [ -z "$APP_PATH" ]; then
+          echo "❌ App bundle not found!"
+          echo "=== xcodebuild log (last 100 lines) ==="
+          tail -100 ios/xcodebuild.log
+          exit 1
+        fi
+        
+        echo "✓ Found app: $APP_PATH"
+        
+        mkdir -p Payload
+        cp -r "$APP_PATH" Payload/
+        
+        # Embed dylib if exists
+        DYLIB_SOURCE="/Users/runner/work/brawl-stars-loader/brawl-stars-loader/BrawlStarsTool.dylib"
+        if [ -f "$DYLIB_SOURCE" ]; then
+          mkdir -p "Payload/BrawlStarsToolLoader.app/Frameworks"
+          cp "$DYLIB_SOURCE" "Payload/BrawlStarsToolLoader.app/Frameworks/"
+          echo "✓ Embedded dylib"
+        fi
+        
+        zip -qr BrawlStarsToolLoader-unsigned.ipa Payload/
+        echo "✓ IPA created"
+        ls -lh BrawlStarsToolLoader-unsigned.ipa
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: unsigned-ipa
+        path: BrawlStarsToolLoader-unsigned.ipa
+        retention-days: 7
